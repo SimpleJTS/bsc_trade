@@ -1,0 +1,49 @@
+{
+  "manifest_version": 3,
+  "name": "BSC Quick Trade",
+  "version": "1.0.0",
+  "description": "Fast meme coin trading on BSC",
+  "permissions": [
+    "storage",
+    "activeTab",
+    "clipboardRead"
+  ],
+  "host_permissions": [
+    "https://bscscan.com/*",
+    "https://www.bscscan.com/*",
+    "https://dexscreener.com/*",
+    "https://www.dextools.io/*",
+    "https://axiom.trade/*",
+    "https://*.axiom.trade/*",
+    "<all_urls>"
+  ],
+  "action": {
+    "default_popup": "popup/index.html",
+    "default_title": "BSC Quick Trade"
+  },
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://bscscan.com/*",
+        "https://www.bscscan.com/*",
+        "https://dexscreener.com/*",
+        "https://www.dextools.io/*",
+        "https://axiom.trade/*",
+        "https://*.axiom.trade/*"
+      ],
+      "js": ["content.js"],
+      "css": ["assets/panel.css"],
+      "run_at": "document_end"
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": ["assets/*"],
+      "matches": ["<all_urls>"]
+    }
+  ]
+}
