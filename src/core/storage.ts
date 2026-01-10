@@ -15,10 +15,8 @@ export interface UserSettings {
 }
 
 export interface WalletData {
-  encryptedPrivateKey: string;
+  privateKey: string; // Base64编码的私钥
   address: string;
-  iv: string;
-  salt: string;
 }
 
 const STORAGE_KEYS = {
@@ -26,7 +24,17 @@ const STORAGE_KEYS = {
   WALLET: 'bsc_trade_wallet',
 };
 
-// Get default settings
+// 简单编码 (非加密，仅混淆)
+export function encodeKey(key: string): string {
+  return btoa(key.split('').reverse().join(''));
+}
+
+// 简单解码
+export function decodeKey(encoded: string): string {
+  return atob(encoded).split('').reverse().join('');
+}
+
+// 获取默认设置
 export function getDefaultSettings(): UserSettings {
   return {
     buyAmounts: DEFAULT_BUY_AMOUNTS,
@@ -37,7 +45,7 @@ export function getDefaultSettings(): UserSettings {
   };
 }
 
-// Load settings from Chrome storage
+// 加载设置
 export async function loadSettings(): Promise<UserSettings> {
   return new Promise((resolve) => {
     chrome.storage.local.get([STORAGE_KEYS.SETTINGS], (result) => {
@@ -50,14 +58,14 @@ export async function loadSettings(): Promise<UserSettings> {
   });
 }
 
-// Save settings to Chrome storage
+// 保存设置
 export async function saveSettings(settings: UserSettings): Promise<void> {
   return new Promise((resolve) => {
     chrome.storage.local.set({ [STORAGE_KEYS.SETTINGS]: settings }, resolve);
   });
 }
 
-// Load wallet data from Chrome storage
+// 加载钱包数据
 export async function loadWalletData(): Promise<WalletData | null> {
   return new Promise((resolve) => {
     chrome.storage.local.get([STORAGE_KEYS.WALLET], (result) => {
@@ -66,21 +74,21 @@ export async function loadWalletData(): Promise<WalletData | null> {
   });
 }
 
-// Save wallet data to Chrome storage
+// 保存钱包数据
 export async function saveWalletData(data: WalletData): Promise<void> {
   return new Promise((resolve) => {
     chrome.storage.local.set({ [STORAGE_KEYS.WALLET]: data }, resolve);
   });
 }
 
-// Clear wallet data
+// 清除钱包数据
 export async function clearWalletData(): Promise<void> {
   return new Promise((resolve) => {
     chrome.storage.local.remove([STORAGE_KEYS.WALLET], resolve);
   });
 }
 
-// Clear all data
+// 清除所有数据
 export async function clearAllData(): Promise<void> {
   return new Promise((resolve) => {
     chrome.storage.local.clear(resolve);

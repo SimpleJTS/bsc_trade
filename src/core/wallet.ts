@@ -1,41 +1,36 @@
 import { ethers } from 'ethers';
-import { encryptPrivateKey, decryptPrivateKey, isValidPrivateKey } from './crypto';
-import { loadWalletData, saveWalletData, clearWalletData, loadSettings } from './storage';
+import { loadWalletData, saveWalletData, clearWalletData, loadSettings, encodeKey, decodeKey } from './storage';
 import { BSC_RPC_URL } from '@/config/constants';
-import { logger, timerStart, timerEnd, timerStep } from './logger';
+import { logger, timerStart, timerEnd } from './logger';
 
 let cachedWallet: ethers.Wallet | null = null;
 let cachedProvider: ethers.JsonRpcProvider | null = null;
 
 // 获取BSC Provider
 export async function getProvider(): Promise<ethers.JsonRpcProvider> {
-  if (cachedProvider) {
-    logger.wallet.debug('使用缓存的Provider');
-    return cachedProvider;
-  }
+  if (cachedProvider) return cachedProvider;
 
-  timerStart('provider', '初始化RPC Provider');
   const settings = await loadSettings();
   const rpcUrl = settings.rpcUrl || BSC_RPC_URL;
-  logger.wallet.info(`连接RPC节点: ${rpcUrl}`);
+  logger.wallet.info(`连接RPC: ${rpcUrl}`);
 
   cachedProvider = new ethers.JsonRpcProvider(rpcUrl);
-  timerEnd('provider');
-
   return cachedProvider;
 }
 
-// 重置Provider (RPC URL变更时调用)
+// 重置Provider
 export function resetProvider(): void {
-  logger.wallet.info('重置RPC Provider');
   cachedProvider = null;
 }
 
-// 导入钱包
-export async function importWallet(
-  privateKey: string,
-  password: string
-): Promise<string> {
+// 验证私钥格式
+export function isValidPrivateKey(privateKey: string): boolean {
+  const key = privateKey.startsWith('0x') ? privateKey.slice(2) : privateKey;
+  return /^[a-fA-F0-9]{64}$/.test(key);
+}
+
+// 导入钱包 (直接保存，无需密码)
+export async function importWallet(privateKey: string): Promise<string> {
   timerStart('import', '导入钱包');
 
   if (!isValidPrivateKey(privateKey)) {
@@ -44,146 +39,99 @@ export async function importWallet(
   }
 
   const formattedKey = privateKey.startsWith('0x') ? privateKey : `0x${privateKey}`;
-
-  timerStep('import', '创建钱包实例');
   const wallet = new ethers.Wallet(formattedKey);
-  logger.wallet.info(`钱包地址: ${wallet.address}`);
 
-  timerStep('import', '加密私钥');
-  const { encrypted, iv, salt } = await encryptPrivateKey(formattedKey, password);
-
-  timerStep('import', '保存到存储');
+  // 保存钱包 (简单编码)
   await saveWalletData({
-    encryptedPrivateKey: encrypted,
+    privateKey: encodeKey(formattedKey),
     address: wallet.address,
-    iv,
-    salt,
   });
 
-  cachedWallet = wallet;
+  // 立即缓存
+  const provider = await getProvider();
+  cachedWallet = wallet.connect(provider);
+
   timerEnd('import');
-  logger.wallet.success('钱包导入成功');
+  logger.wallet.success(`钱包已导入: ${wallet.address}`);
 
   return wallet.address;
 }
 
-// 解锁钱包
-export async function unlockWallet(password: string): Promise<ethers.Wallet> {
-  timerStart('unlock', '解锁钱包');
-
+// 自动加载钱包 (页面打开时调用)
+export async function autoLoadWallet(): Promise<boolean> {
   const walletData = await loadWalletData();
   if (!walletData) {
-    logger.wallet.error('未找到钱包数据');
-    throw new Error('未找到钱包，请先导入钱包');
+    logger.wallet.debug('未找到钱包数据');
+    return false;
   }
 
   try {
-    timerStep('unlock', '解密私钥');
-    const privateKey = await decryptPrivateKey(
-      walletData.encryptedPrivateKey,
-      walletData.iv,
-      walletData.salt,
-      password
-    );
-
-    timerStep('unlock', '连接Provider');
+    const privateKey = decodeKey(walletData.privateKey);
     const provider = await getProvider();
     cachedWallet = new ethers.Wallet(privateKey, provider);
-
-    timerEnd('unlock');
-    logger.wallet.success(`钱包解锁成功: ${walletData.address}`);
-
-    return cachedWallet;
+    logger.wallet.success(`钱包已自动加载: ${walletData.address}`);
+    return true;
   } catch (error) {
-    logger.wallet.error('密码错误或解密失败');
-    throw new Error('密码错误');
+    logger.wallet.error('钱包加载失败');
+    return false;
   }
 }
 
-// 获取当前钱包 (需要先解锁)
+// 获取当前钱包
 export function getWallet(): ethers.Wallet | null {
   return cachedWallet;
 }
 
-// 获取签名器 (钱包连接Provider)
+// 获取签名器
 export async function getSigner(): Promise<ethers.Wallet> {
   if (!cachedWallet) {
-    logger.wallet.error('钱包未解锁');
-    throw new Error('钱包未解锁');
+    // 尝试自动加载
+    const loaded = await autoLoadWallet();
+    if (!loaded || !cachedWallet) {
+      throw new Error('钱包未导入');
+    }
   }
-
-  const provider = await getProvider();
-  return cachedWallet.connect(provider);
+  return cachedWallet;
 }
 
-// 检查是否已导入钱包
+// 检查是否有钱包
 export async function hasWallet(): Promise<boolean> {
+  if (cachedWallet) return true;
   const walletData = await loadWalletData();
-  const exists = walletData !== null;
-  logger.wallet.debug(`钱包存在: ${exists}`);
-  return exists;
+  return walletData !== null;
 }
 
-// 检查钱包是否已解锁
-export function isWalletUnlocked(): boolean {
-  const unlocked = cachedWallet !== null;
-  logger.wallet.debug(`钱包已解锁: ${unlocked}`);
-  return unlocked;
+// 钱包是否已加载
+export function isWalletReady(): boolean {
+  return cachedWallet !== null;
 }
 
-// 获取钱包地址 (无需解锁)
+// 获取钱包地址
 export async function getWalletAddress(): Promise<string | null> {
   if (cachedWallet) return cachedWallet.address;
-
   const walletData = await loadWalletData();
   return walletData?.address || null;
 }
 
 // 获取BNB余额
 export async function getBnbBalance(): Promise<string> {
-  timerStart('bnb-balance', '查询BNB余额');
-
   const signer = await getSigner();
   const balance = await signer.provider!.getBalance(signer.address);
-  const formatted = ethers.formatEther(balance);
-
-  timerEnd('bnb-balance');
-  logger.wallet.info(`BNB余额: ${formatted}`);
-
-  return formatted;
+  return ethers.formatEther(balance);
 }
 
-// 锁定钱包 (从内存清除)
-export function lockWallet(): void {
-  logger.wallet.info('锁定钱包');
-  cachedWallet = null;
-}
-
-// 完全移除钱包
+// 移除钱包
 export async function removeWallet(): Promise<void> {
-  logger.wallet.warn('移除钱包数据');
+  logger.wallet.warn('移除钱包');
   cachedWallet = null;
   await clearWalletData();
-  logger.wallet.success('钱包数据已清除');
 }
 
-// 导出私钥 (需要密码)
-export async function exportPrivateKey(password: string): Promise<string> {
-  logger.wallet.warn('导出私钥请求');
-
+// 导出私钥
+export async function exportPrivateKey(): Promise<string> {
   const walletData = await loadWalletData();
   if (!walletData) {
-    logger.wallet.error('未找到钱包');
     throw new Error('未找到钱包');
   }
-
-  const privateKey = await decryptPrivateKey(
-    walletData.encryptedPrivateKey,
-    walletData.iv,
-    walletData.salt,
-    password
-  );
-
-  logger.wallet.success('私钥导出成功');
-  return privateKey;
+  return decodeKey(walletData.privateKey);
 }
