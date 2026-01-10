@@ -37,7 +37,7 @@ export function SellButtons({ percentages, disabled, onSell }: SellButtonsProps)
     <div class="bsc-section">
       <div class="bsc-section-title">
         <span>📤</span>
-        <span>Quick Sell</span>
+        <span>快速卖出</span>
       </div>
       <div class="bsc-btn-grid with-custom">
         {percentages.map((pct) => (

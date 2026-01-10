@@ -1,4 +1,5 @@
 import { useState } from 'preact/hooks';
+import { logger } from '@/core/logger';
 
 interface UnlockFormProps {
   onUnlock: (password: string) => Promise<void>;
@@ -19,7 +20,8 @@ export function UnlockForm({ onUnlock, hasWallet, onImportClick }: UnlockFormPro
     try {
       await onUnlock(password);
     } catch (err: any) {
-      setError(err.message || 'Failed to unlock');
+      logger.ui.error(`解锁失败: ${err.message}`);
+      setError(err.message || '解锁失败');
     } finally {
       setLoading(false);
     }
@@ -35,10 +37,10 @@ export function UnlockForm({ onUnlock, hasWallet, onImportClick }: UnlockFormPro
     return (
       <div class="bsc-unlock-form">
         <p style={{ textAlign: 'center', color: '#888', margin: '20px 0' }}>
-          No wallet found. Please import your wallet in the extension settings.
+          未找到钱包，请在扩展设置中导入钱包
         </p>
         <button class="bsc-btn" onClick={onImportClick}>
-          Open Settings
+          打开设置
         </button>
       </div>
     );
@@ -49,7 +51,7 @@ export function UnlockForm({ onUnlock, hasWallet, onImportClick }: UnlockFormPro
       <input
         type="password"
         class="bsc-input"
-        placeholder="Enter password to unlock"
+        placeholder="输入密码解锁钱包"
         value={password}
         onInput={(e) => setPassword((e.target as HTMLInputElement).value)}
         onKeyDown={handleKeyDown}
@@ -57,7 +59,7 @@ export function UnlockForm({ onUnlock, hasWallet, onImportClick }: UnlockFormPro
       />
       {error && <div class="bsc-status error">{error}</div>}
       <button class="bsc-btn" onClick={handleUnlock} disabled={loading || !password}>
-        {loading ? <span class="bsc-spinner"></span> : 'Unlock Wallet'}
+        {loading ? <span class="bsc-spinner"></span> : '解锁钱包'}
       </button>
     </div>
   );

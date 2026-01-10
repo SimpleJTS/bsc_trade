@@ -18,7 +18,7 @@ function App() {
   const [walletAddress, setWalletAddress] = useState<string | null>(null);
   const [status, setStatus] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
 
-  // Load data on mount
+  // 加载数据
   useEffect(() => {
     const load = async () => {
       const userSettings = await loadSettings();
@@ -38,7 +38,7 @@ function App() {
   };
 
   if (!settings) {
-    return <div style={{ padding: '20px', textAlign: 'center' }}>Loading...</div>;
+    return <div style={{ padding: '20px', textAlign: 'center' }}>加载中...</div>;
   }
 
   return (
@@ -47,18 +47,18 @@ function App() {
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" />
         </svg>
-        <h1>BSC Quick Trade</h1>
+        <h1>BSC 快速交易</h1>
       </div>
 
       <div class="tabs">
         <button class={`tab ${tab === 'wallet' ? 'active' : ''}`} onClick={() => setTab('wallet')}>
-          Wallet
+          钱包
         </button>
         <button class={`tab ${tab === 'trading' ? 'active' : ''}`} onClick={() => setTab('trading')}>
-          Trading
+          交易设置
         </button>
         <button class={`tab ${tab === 'advanced' ? 'active' : ''}`} onClick={() => setTab('advanced')}>
-          Advanced
+          高级设置
         </button>
       </div>
 
@@ -69,7 +69,7 @@ function App() {
           walletAddress={walletAddress}
           onWalletImport={(address) => {
             setWalletAddress(address);
-            showStatus('success', 'Wallet imported successfully');
+            showStatus('success', '钱包导入成功');
           }}
           onError={(msg) => showStatus('error', msg)}
         />
@@ -81,7 +81,7 @@ function App() {
           onSave={async (newSettings) => {
             await saveSettings(newSettings);
             setSettings(newSettings);
-            showStatus('success', 'Settings saved');
+            showStatus('success', '设置已保存');
           }}
         />
       )}
@@ -92,14 +92,14 @@ function App() {
           onSave={async (newSettings) => {
             await saveSettings(newSettings);
             setSettings(newSettings);
-            showStatus('success', 'Settings saved');
+            showStatus('success', '设置已保存');
           }}
           onClearData={async () => {
             await clearAllData();
             setWalletAddress(null);
             const defaultSettings = await loadSettings();
             setSettings(defaultSettings);
-            showStatus('success', 'All data cleared');
+            showStatus('success', '所有数据已清除');
           }}
         />
       )}
@@ -107,7 +107,7 @@ function App() {
   );
 }
 
-// Wallet Tab
+// 钱包标签页
 interface WalletTabProps {
   walletAddress: string | null;
   onWalletImport: (address: string) => void;
@@ -125,22 +125,22 @@ function WalletTab({ walletAddress, onWalletImport, onError }: WalletTabProps) {
 
   const handleImport = async () => {
     if (!privateKey || !password) {
-      onError('Please fill in all fields');
+      onError('请填写所有字段');
       return;
     }
 
     if (password !== confirmPassword) {
-      onError('Passwords do not match');
+      onError('两次输入的密码不一致');
       return;
     }
 
     if (password.length < 6) {
-      onError('Password must be at least 6 characters');
+      onError('密码至少需要6个字符');
       return;
     }
 
     if (!isValidPrivateKey(privateKey)) {
-      onError('Invalid private key format');
+      onError('私钥格式无效');
       return;
     }
 
@@ -152,7 +152,7 @@ function WalletTab({ walletAddress, onWalletImport, onError }: WalletTabProps) {
       setPassword('');
       setConfirmPassword('');
     } catch (err: any) {
-      onError(err.message || 'Failed to import wallet');
+      onError(err.message || '钱包导入失败');
     } finally {
       setLoading(false);
     }
@@ -160,7 +160,7 @@ function WalletTab({ walletAddress, onWalletImport, onError }: WalletTabProps) {
 
   const handleExport = async () => {
     if (!exportPassword) {
-      onError('Please enter your password');
+      onError('请输入密码');
       return;
     }
 
@@ -168,7 +168,7 @@ function WalletTab({ walletAddress, onWalletImport, onError }: WalletTabProps) {
       const key = await exportPrivateKey(exportPassword);
       setExportedKey(key);
     } catch (err: any) {
-      onError(err.message || 'Invalid password');
+      onError(err.message || '密码错误');
     }
   };
 
@@ -176,21 +176,21 @@ function WalletTab({ walletAddress, onWalletImport, onError }: WalletTabProps) {
     <div>
       {walletAddress ? (
         <div class="section">
-          <div class="section-title">Current Wallet</div>
+          <div class="section-title">当前钱包</div>
           <div class="wallet-info">
             <div class="wallet-address">{walletAddress}</div>
           </div>
 
           {!showExport ? (
             <button class="btn btn-secondary" onClick={() => setShowExport(true)}>
-              Export Private Key
+              导出私钥
             </button>
           ) : (
             <div>
               {exportedKey ? (
                 <div>
                   <div class="form-group">
-                    <label class="form-label">Your Private Key (keep it safe!)</label>
+                    <label class="form-label">您的私钥 (请妥善保管!)</label>
                     <input
                       type="text"
                       class="input"
@@ -204,27 +204,27 @@ function WalletTab({ walletAddress, onWalletImport, onError }: WalletTabProps) {
                     setExportedKey('');
                     setExportPassword('');
                   }}>
-                    Hide
+                    隐藏
                   </button>
                 </div>
               ) : (
                 <div>
                   <div class="form-group">
-                    <label class="form-label">Enter Password</label>
+                    <label class="form-label">输入密码</label>
                     <input
                       type="password"
                       class="input"
-                      placeholder="Your password"
+                      placeholder="您的密码"
                       value={exportPassword}
                       onInput={(e) => setExportPassword((e.target as HTMLInputElement).value)}
                     />
                   </div>
                   <div class="btn-group">
                     <button class="btn btn-secondary" onClick={() => setShowExport(false)}>
-                      Cancel
+                      取消
                     </button>
                     <button class="btn btn-primary" onClick={handleExport}>
-                      Export
+                      导出
                     </button>
                   </div>
                 </div>
@@ -233,52 +233,52 @@ function WalletTab({ walletAddress, onWalletImport, onError }: WalletTabProps) {
           )}
 
           <div style={{ marginTop: '20px' }}>
-            <div class="section-title">Import New Wallet</div>
+            <div class="section-title">导入新钱包</div>
           </div>
         </div>
       ) : null}
 
       <div class="section">
-        {!walletAddress && <div class="section-title">Import Wallet</div>}
+        {!walletAddress && <div class="section-title">导入钱包</div>}
         <div class="form-group">
-          <label class="form-label">Private Key</label>
+          <label class="form-label">私钥</label>
           <input
             type="password"
             class="input"
-            placeholder="Enter your private key"
+            placeholder="输入您的私钥"
             value={privateKey}
             onInput={(e) => setPrivateKey((e.target as HTMLInputElement).value)}
           />
         </div>
         <div class="form-group">
-          <label class="form-label">Password</label>
+          <label class="form-label">密码</label>
           <input
             type="password"
             class="input"
-            placeholder="Create a password (min 6 characters)"
+            placeholder="创建密码 (至少6个字符)"
             value={password}
             onInput={(e) => setPassword((e.target as HTMLInputElement).value)}
           />
         </div>
         <div class="form-group">
-          <label class="form-label">Confirm Password</label>
+          <label class="form-label">确认密码</label>
           <input
             type="password"
             class="input"
-            placeholder="Confirm your password"
+            placeholder="再次输入密码"
             value={confirmPassword}
             onInput={(e) => setConfirmPassword((e.target as HTMLInputElement).value)}
           />
         </div>
         <button class="btn btn-primary" onClick={handleImport} disabled={loading}>
-          {loading ? <span class="spinner"></span> : 'Import Wallet'}
+          {loading ? <span class="spinner"></span> : '导入钱包'}
         </button>
       </div>
     </div>
   );
 }
 
-// Trading Tab
+// 交易设置标签页
 interface TradingTabProps {
   settings: UserSettings;
   onSave: (settings: UserSettings) => Promise<void>;
@@ -325,7 +325,7 @@ function TradingTab({ settings, onSave }: TradingTabProps) {
   return (
     <div>
       <div class="section">
-        <div class="section-title">Buy Amounts (BNB)</div>
+        <div class="section-title">买入金额预设 (BNB)</div>
         <div class="preset-editor">
           {buyAmounts.map((amount) => (
             <div class="preset-tag" key={amount}>
@@ -337,18 +337,18 @@ function TradingTab({ settings, onSave }: TradingTabProps) {
         <div class="preset-add">
           <input
             type="number"
-            placeholder="Amount"
+            placeholder="金额"
             value={newBuyAmount}
             onInput={(e) => setNewBuyAmount((e.target as HTMLInputElement).value)}
             step="0.01"
             min="0"
           />
-          <button onClick={addBuyAmount}>Add</button>
+          <button onClick={addBuyAmount}>添加</button>
         </div>
       </div>
 
       <div class="section">
-        <div class="section-title">Sell Percentages (%)</div>
+        <div class="section-title">卖出比例预设 (%)</div>
         <div class="preset-editor">
           {sellPercentages.map((pct) => (
             <div class="preset-tag" key={pct}>
@@ -367,18 +367,18 @@ function TradingTab({ settings, onSave }: TradingTabProps) {
             min="1"
             max="100"
           />
-          <button onClick={addSellPct}>Add</button>
+          <button onClick={addSellPct}>添加</button>
         </div>
       </div>
 
       <button class="btn btn-primary" onClick={handleSave}>
-        Save Settings
+        保存设置
       </button>
     </div>
   );
 }
 
-// Advanced Tab
+// 高级设置标签页
 interface AdvancedTabProps {
   settings: UserSettings;
   onSave: (settings: UserSettings) => Promise<void>;
@@ -414,9 +414,9 @@ function AdvancedTab({ settings, onSave, onClearData }: AdvancedTabProps) {
   return (
     <div>
       <div class="section">
-        <div class="section-title">Trading Settings</div>
+        <div class="section-title">交易设置</div>
         <div class="form-group">
-          <label class="form-label">Slippage Tolerance</label>
+          <label class="form-label">滑点容忍度</label>
           <div class="input-with-unit">
             <input
               type="number"
@@ -431,7 +431,7 @@ function AdvancedTab({ settings, onSave, onClearData }: AdvancedTabProps) {
           </div>
         </div>
         <div class="form-group">
-          <label class="form-label">Gas Price</label>
+          <label class="form-label">Gas 价格</label>
           <div class="input-with-unit">
             <input
               type="number"
@@ -447,7 +447,7 @@ function AdvancedTab({ settings, onSave, onClearData }: AdvancedTabProps) {
       </div>
 
       <div class="section">
-        <div class="section-title">RPC Node</div>
+        <div class="section-title">RPC 节点</div>
         <div class="form-group">
           <input
             type="text"
@@ -460,26 +460,26 @@ function AdvancedTab({ settings, onSave, onClearData }: AdvancedTabProps) {
       </div>
 
       <button class="btn btn-primary" onClick={handleSave} style={{ marginBottom: '16px' }}>
-        Save Settings
+        保存设置
       </button>
 
       <div class="section">
-        <div class="section-title">Danger Zone</div>
+        <div class="section-title">危险操作</div>
         {!showClearConfirm ? (
           <button class="btn btn-danger" onClick={() => setShowClearConfirm(true)}>
-            Clear All Data
+            清除所有数据
           </button>
         ) : (
           <div>
             <p style={{ marginBottom: '12px', color: '#ff5252' }}>
-              This will delete your wallet and all settings. Are you sure?
+              这将删除您的钱包和所有设置。确定要继续吗？
             </p>
             <div class="btn-group">
               <button class="btn btn-secondary" onClick={() => setShowClearConfirm(false)}>
-                Cancel
+                取消
               </button>
               <button class="btn btn-danger" onClick={onClearData}>
-                Yes, Clear All
+                确认清除
               </button>
             </div>
           </div>
@@ -489,5 +489,5 @@ function AdvancedTab({ settings, onSave, onClearData }: AdvancedTabProps) {
   );
 }
 
-// Mount app
+// 挂载应用
 render(<App />, document.getElementById('app')!);

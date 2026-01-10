@@ -18,7 +18,7 @@ export function StatusMessage({ type, message, txHash }: StatusMessageProps) {
             target="_blank"
             rel="noopener noreferrer"
           >
-            View TX →
+            查看交易 →
           </a>
         </>
       )}

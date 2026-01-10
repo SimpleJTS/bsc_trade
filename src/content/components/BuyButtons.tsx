@@ -36,7 +36,7 @@ export function BuyButtons({ amounts, disabled, onBuy }: BuyButtonsProps) {
     <div class="bsc-section">
       <div class="bsc-section-title">
         <span>⚡</span>
-        <span>Quick Buy (BNB)</span>
+        <span>快速买入 (BNB)</span>
       </div>
       <div class="bsc-btn-grid with-custom">
         {amounts.map((amount) => (
@@ -56,7 +56,7 @@ export function BuyButtons({ amounts, disabled, onBuy }: BuyButtonsProps) {
         <input
           type="number"
           class="bsc-custom-input"
-          placeholder="Custom"
+          placeholder="自定义"
           value={customAmount}
           onInput={(e) => setCustomAmount((e.target as HTMLInputElement).value)}
           onKeyDown={handleKeyDown}

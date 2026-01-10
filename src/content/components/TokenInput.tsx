@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'preact/hooks';
 import { isValidAddress, getTokenInfo, getTokenBalance, formatTokenAmount, type TokenInfo } from '@/core/token';
+import { logger } from '@/core/logger';
 
 interface TokenInputProps {
   walletAddress: string;
@@ -25,6 +26,7 @@ export function TokenInput({ walletAddress, onTokenChange }: TokenInputProps) {
 
       setLoading(true);
       setError('');
+      logger.ui.info(`查询代币信息: ${address}`);
 
       try {
         const tokenInfo = await getTokenInfo(address);
@@ -33,8 +35,10 @@ export function TokenInput({ walletAddress, onTokenChange }: TokenInputProps) {
         setToken(tokenInfo);
         setBalance(tokenBalance.formatted);
         onTokenChange(tokenInfo, tokenBalance.formatted);
+        logger.ui.success(`代币加载成功: ${tokenInfo.symbol}`);
       } catch (err: any) {
-        setError(err.message || 'Invalid token');
+        logger.ui.error(`代币查询失败: ${err.message}`);
+        setError(err.message || '无效的代币');
         setToken(null);
         setBalance('0');
         onTokenChange(null, '0');
@@ -52,22 +56,23 @@ export function TokenInput({ walletAddress, onTokenChange }: TokenInputProps) {
       const text = await navigator.clipboard.readText();
       if (text && isValidAddress(text.trim())) {
         setAddress(text.trim());
+        logger.ui.debug('从剪贴板粘贴地址');
       }
     } catch {
-      // Clipboard access denied
+      // 剪贴板访问被拒绝
     }
   };
 
   return (
     <div class="bsc-section">
       <div class="bsc-section-title">
-        <span>Token Contract Address (CA)</span>
+        <span>代币合约地址 (CA)</span>
       </div>
       <div class="bsc-input-group">
         <input
           type="text"
           class="bsc-input"
-          placeholder="Paste token contract address..."
+          placeholder="粘贴代币合约地址..."
           value={address}
           onInput={(e) => setAddress((e.target as HTMLInputElement).value)}
           onFocus={handlePaste}
@@ -76,7 +81,7 @@ export function TokenInput({ walletAddress, onTokenChange }: TokenInputProps) {
 
       {loading && (
         <div class="bsc-token-info">
-          <span style={{ color: '#888' }}>Loading...</span>
+          <span style={{ color: '#888' }}>加载中...</span>
         </div>
       )}
 
@@ -90,7 +95,7 @@ export function TokenInput({ walletAddress, onTokenChange }: TokenInputProps) {
         <div class="bsc-token-info">
           <span class="bsc-token-symbol">{token.symbol}</span>
           <span class="bsc-token-balance">
-            Balance: {formatTokenAmount(balance)}
+            余额: {formatTokenAmount(balance)}
           </span>
         </div>
       )}
