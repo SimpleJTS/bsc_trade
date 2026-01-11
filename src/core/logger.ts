@@ -116,4 +116,5 @@ export const logger = {
   storage: createLogger('存储'),
   ui: createLogger('界面'),
   crypto: createLogger('加密'),
+  cache: createLogger('缓存'),
 };

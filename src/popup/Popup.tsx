@@ -5,6 +5,7 @@ import {
   saveSettings,
   loadWalletData,
   clearAllData,
+  getDefaultSettings,
   type UserSettings,
 } from '@/core/storage';
 import { importWallet, isValidPrivateKey } from '@/core/wallet';
@@ -19,15 +20,41 @@ function App() {
 
   useEffect(() => {
     const load = async () => {
-      const userSettings = await loadSettings();
-      setSettings(userSettings);
+      try {
+        const userSettings = await loadSettings();
+        setSettings(userSettings || getDefaultSettings());
 
-      const walletData = await loadWalletData();
-      if (walletData) {
-        setWalletAddress(walletData.address);
+        const walletData = await loadWalletData();
+        if (walletData) {
+          setWalletAddress(walletData.address);
+        }
+      } catch (error) {
+        // 如果加载失败，使用默认设置
+        console.error('加载设置失败:', error);
+        setSettings(getDefaultSettings());
       }
     };
     load();
+
+    // 监听storage变化，确保导入钱包后能更新数据
+    const listener = (changes: { [key: string]: chrome.storage.StorageChange }) => {
+      if (changes.bsc_trade_settings) {
+        setSettings(changes.bsc_trade_settings.newValue || getDefaultSettings());
+      }
+      if (changes.bsc_trade_wallet) {
+        const newWalletData = changes.bsc_trade_wallet.newValue;
+        if (newWalletData) {
+          setWalletAddress(newWalletData.address);
+        } else {
+          setWalletAddress(null);
+        }
+      }
+    };
+
+    chrome.storage.onChanged.addListener(listener);
+    return () => {
+      chrome.storage.onChanged.removeListener(listener);
+    };
   }, []);
 
   const showStatus = (type: 'success' | 'error', message: string) => {
