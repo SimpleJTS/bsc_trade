@@ -12,6 +12,7 @@ export interface UserSettings {
   slippage: number;
   gasPriceGwei: number;
   rpcUrl: string;
+  aggressiveMode?: boolean; // 激进模式：跳过报价获取，直接发送交易
 }
 
 export interface WalletData {
@@ -42,6 +43,7 @@ export function getDefaultSettings(): UserSettings {
     slippage: DEFAULT_SLIPPAGE,
     gasPriceGwei: DEFAULT_GAS_PRICE_GWEI,
     rpcUrl: BSC_RPC_URL,
+    aggressiveMode: false, // 默认关闭激进模式
   };
 }
 

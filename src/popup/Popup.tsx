@@ -279,6 +279,7 @@ function AdvancedTab({ settings, onSave, onClearData }: {
   const [slippage, setSlippage] = useState(settings.slippage.toString());
   const [gasPrice, setGasPrice] = useState(settings.gasPriceGwei.toString());
   const [rpcUrl, setRpcUrl] = useState(settings.rpcUrl);
+  const [aggressiveMode, setAggressiveMode] = useState(settings.aggressiveMode ?? false);
 
   const handleSave = () => {
     onSave({
@@ -286,6 +287,7 @@ function AdvancedTab({ settings, onSave, onClearData }: {
       slippage: parseFloat(slippage) || 12,
       gasPriceGwei: parseFloat(gasPrice) || 5,
       rpcUrl: rpcUrl || settings.rpcUrl,
+      aggressiveMode: aggressiveMode,
     });
   };
 
@@ -318,6 +320,21 @@ function AdvancedTab({ settings, onSave, onClearData }: {
             value={rpcUrl}
             onInput={(e) => setRpcUrl((e.target as HTMLInputElement).value)}
           />
+        </div>
+        <div class="form-group" style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '12px' }}>
+          <input
+            type="checkbox"
+            id="aggressiveMode"
+            checked={aggressiveMode}
+            onChange={(e) => setAggressiveMode((e.target as HTMLInputElement).checked)}
+            style={{ width: '18px', height: '18px', cursor: 'pointer' }}
+          />
+          <label for="aggressiveMode" style={{ cursor: 'pointer', userSelect: 'none' }}>
+            <strong>激进模式</strong>
+            <div style={{ fontSize: '12px', color: '#666', marginTop: '4px' }}>
+              跳过报价获取，直接发送交易（节省 100-300ms，但接受更大滑点）
+            </div>
+          </label>
         </div>
       </div>
 

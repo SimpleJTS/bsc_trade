@@ -7,13 +7,13 @@ import {
   autoLoadWallet,
   getWalletAddress,
   getBnbBalance,
+  getProvider,
 } from '@/core/wallet';
-import { buyToken, sellToken, preApproveToken } from '@/core/swap';
+import { buyToken, sellToken, preApproveToken, preloadTokenData } from '@/core/swap';
 import { loadSettings, getDefaultSettings, type UserSettings } from '@/core/storage';
 import { PANCAKE_ROUTER_V2 } from '@/config/constants';
 import { isValidAddress } from '@/core/token';
 import { preloadCommonData } from '@/core/cache';
-import { getProvider, getWalletAddress } from '@/core/wallet';
 
 interface Status {
   type: 'success' | 'error' | 'pending';
@@ -93,11 +93,13 @@ export function Panel() {
 
   // 从 Axiom DOM 元素提取代币地址（支持 SPA 路由变化）
   useEffect(() => {
+    let lastExtractedAddress: string | null = null; // 记录上次提取的地址，避免重复输出
+    
     const extractTokenFromDOM = () => {
       try {
         let tokenAddr: string | null = null;
         
-        // 方法1: 查找包含 "CA:" 文本的元素，然后在同一容器中查找 bscscan 链接
+        // 方法1: 查找包含 "CA:" 文本的元素，然后在同一容器中查找 bscscan 链接（Axiom 等）
         const caElements = Array.from(document.querySelectorAll('*')).filter(el => {
           return el.textContent?.includes('CA:');
         });
@@ -122,7 +124,23 @@ export function Panel() {
           }
         }
 
-        // 方法2: 如果没找到，直接查找所有 bscscan.com/address/ 链接（备用）
+        // 方法2: 查找 bscscan.com/token/ 链接（GMGN 等网站）
+        if (!tokenAddr) {
+          const tokenLinks = document.querySelectorAll('a[href*="bscscan.com/token/"]');
+          for (const link of Array.from(tokenLinks)) {
+            const href = link.getAttribute('href');
+            if (href) {
+              // 匹配 bscscan.com/token/0x... 格式（GMGN 使用这种方式）
+              const match = href.match(/bscscan\.com\/token\/(0x[a-fA-F0-9]{40})/);
+              if (match && match[1]) {
+                tokenAddr = match[1];
+                break;
+              }
+            }
+          }
+        }
+
+        // 方法3: 如果没找到，直接查找所有 bscscan.com/address/ 链接（备用）
         if (!tokenAddr) {
           const allLinks = document.querySelectorAll('a[href*="bscscan.com/address/"]');
           for (const link of Array.from(allLinks)) {
@@ -142,11 +160,18 @@ export function Panel() {
         }
 
         if (tokenAddr && isValidAddress(tokenAddr)) {
-          console.log('[BSC Trade Panel] 从 DOM 提取到代币地址:', tokenAddr);
-          setUrlTokenAddress(tokenAddr);
+          // 只在地址真正变化时才输出日志和更新状态
+          if (tokenAddr.toLowerCase() !== lastExtractedAddress?.toLowerCase()) {
+            console.log('[BSC Trade Panel] 从 DOM 提取到代币地址:', tokenAddr);
+            lastExtractedAddress = tokenAddr;
+            setUrlTokenAddress(tokenAddr);
+          }
         } else {
-          // 如果没找到，清除之前提取的地址
-          setUrlTokenAddress(null);
+          // 如果没找到，清除之前提取的地址（只在之前有地址时才清除）
+          if (lastExtractedAddress !== null) {
+            lastExtractedAddress = null;
+            setUrlTokenAddress(null);
+          }
         }
       } catch (error) {
         console.error('[BSC Trade Panel] 提取地址失败:', error);
@@ -177,8 +202,19 @@ export function Panel() {
     };
 
     // 使用 MutationObserver 监听 DOM 变化（主要方式）
+    // 添加防抖，避免频繁触发
+    let debounceTimer: number | null = null;
+    const debouncedExtract = () => {
+      if (debounceTimer) {
+        clearTimeout(debounceTimer);
+      }
+      debounceTimer = window.setTimeout(() => {
+        extractTokenFromDOM();
+      }, 300); // 300ms 防抖
+    };
+    
     const observer = new MutationObserver(() => {
-      extractTokenFromDOM();
+      debouncedExtract();
     });
     
     // 监听整个文档的变化
@@ -195,6 +231,9 @@ export function Panel() {
       history.pushState = originalPushState;
       history.replaceState = originalReplaceState;
       observer.disconnect();
+      if (debounceTimer) {
+        clearTimeout(debounceTimer);
+      }
     };
   }, []);
 
@@ -310,9 +349,16 @@ export function Panel() {
         ]);
         
         if (walletAddr) {
-          // 预处理通用数据（feeData、chainId、nonce）
-          await preloadCommonData(provider, walletAddr);
-          console.log('[BSC Trade Panel] 预处理完成：feeData、chainId、nonce 已缓存');
+          // 并行：预处理通用数据（feeData、chainId、nonce）+ 预加载代币数据（毕业状态 + 授权）
+          await Promise.all([
+            preloadCommonData(provider, walletAddr).catch(() => {
+              console.log('[BSC Trade Panel] 预加载通用数据失败');
+            }),
+            preloadTokenData(tokenAddress).catch(() => {
+              console.log('[BSC Trade Panel] 预加载代币数据失败');
+            }),
+          ]);
+          console.log('[BSC Trade Panel] 预处理完成：feeData、chainId、nonce、毕业状态、授权已缓存');
         }
       } catch (error) {
         console.error('[BSC Trade Panel] 预处理失败:', error);
@@ -585,7 +631,11 @@ export function Panel() {
   // 打开设置页面
   const handleOpenSettings = () => {
     chrome.runtime.sendMessage({ type: 'OPEN_POPUP' }).catch(() => {
-      chrome.runtime.openOptionsPage?.() || chrome.action.openPopup?.();
+      if (chrome.runtime.openOptionsPage) {
+        chrome.runtime.openOptionsPage();
+      } else if (chrome.action?.openPopup) {
+        chrome.action.openPopup();
+      }
     });
   };
 

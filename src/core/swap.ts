@@ -73,9 +73,14 @@ async function checkTokenGraduation(tokenAddress: string): Promise<boolean> {
     const safeToken = ethers.getAddress(tokenAddress.toLowerCase());
     const safeLaunchpad = getLaunchpadAddress();
     
-    // 步骤2: 检查 launchpad 持有的代币余额
+    // 步骤2: 并行调用 balanceOf 和 getPair（优化：节省一个 RPC 往返时间）
     const tokenContract = new ethers.Contract(safeToken, ERC20_ABI, provider);
-    const launchpadBalance = await tokenContract.balanceOf(safeLaunchpad);
+    const factory = new ethers.Contract(PANCAKE_FACTORY_V2, PANCAKE_FACTORY_V2_ABI, provider);
+    
+    const [launchpadBalance, pairAddress] = await Promise.all([
+      tokenContract.balanceOf(safeLaunchpad),
+      factory.getPair(WBNB_ADDRESS, safeToken),
+    ]);
     
     logger.swap.debug(`Launchpad 持有代币: ${ethers.formatEther(launchpadBalance)}`);
     
@@ -83,9 +88,6 @@ async function checkTokenGraduation(tokenAddress: string): Promise<boolean> {
     
     if (launchpadBalance <= UNGRADUATED_THRESHOLD) {
       // Launchpad 余额低，可能已毕业，需要确认是否有 PancakeSwap V2 pair
-      const factory = new ethers.Contract(PANCAKE_FACTORY_V2, PANCAKE_FACTORY_V2_ABI, provider);
-      const pairAddress = await factory.getPair(WBNB_ADDRESS, safeToken);
-      
       if (pairAddress !== ethers.ZeroAddress) {
         isGraduated = true;
         logger.swap.info('代币已毕业！使用 PancakeSwap V2 外盘交易');
@@ -290,6 +292,27 @@ async function getBestQuote(
   logger.swap.info(`最优路由: ${bestQuote.route.toUpperCase()}, 预计输出: ${ethers.formatUnits(bestQuote.amountOut, decimals)}`);
 
   return bestQuote;
+}
+
+// 预加载代币数据（在用户输入CA时调用，优化交易速度）
+export async function preloadTokenData(tokenAddress: string): Promise<void> {
+  try {
+    // 并行执行：检查毕业状态 + 预授权（外盘和内盘）
+    await Promise.all([
+      checkTokenGraduation(tokenAddress).catch(() => {
+        logger.swap.debug('预加载毕业状态失败');
+      }),
+      preApproveToken(tokenAddress, PANCAKE_ROUTER_V2).catch(() => {
+        logger.swap.debug('预授权外盘失败');
+      }),
+      preApproveToken(tokenAddress, getLaunchpadAddress()).catch(() => {
+        logger.swap.debug('预授权内盘失败');
+      }),
+    ]);
+    logger.swap.debug('预加载代币数据完成');
+  } catch (error: any) {
+    logger.swap.debug(`预加载代币数据失败: ${error.message}`);
+  }
 }
 
 // 预授权代币（可在用户输入CA时调用）
@@ -545,13 +568,22 @@ export async function buyToken(
 
     if (isGraduated) {
       // 已毕业：使用 PancakeSwap V2 外盘
-      const quote = await getBestQuote(WBNB_ADDRESS, tokenAddress, amountIn);
-      const amountOutMin = (quote.amountOut * BigInt(100 - settings.slippage)) / 100n;
-      route = 'V2外盘';
+      let amountOutMin: bigint;
+      
+      // 激进模式：跳过报价获取，直接使用最小输出值（节省一次 RPC 调用）
+      if (settings.aggressiveMode) {
+        amountOutMin = 1n; // 最小输出值，接受更大滑点
+        logger.swap.info('激进模式：跳过报价获取，直接发送交易');
+        route = 'V2外盘(激进)';
+      } else {
+        const quote = await getBestQuote(WBNB_ADDRESS, tokenAddress, amountIn);
+        amountOutMin = (quote.amountOut * BigInt(100 - settings.slippage)) / 100n;
+        route = 'V2外盘';
+      }
 
       const router = new ethers.Contract(PANCAKE_ROUTER_V2, PANCAKE_ROUTER_V2_ABI, signer);
       
-      // 使用优化的交易发送方式（参考 test.js）
+      // 优化：直接构建完整交易对象，跳过 populateTransaction（节省 RPC 调用）
       const txRequest = {
         to: router.target,
         data: router.interface.encodeFunctionData("swapExactETHForTokens", [
@@ -563,13 +595,14 @@ export async function buyToken(
         value: amountIn,
         gasLimit: DEFAULT_GAS_LIMIT,
         nonce,
-        chainId: chainId || undefined,
+        chainId: chainId || 56n, // BSC 主网，硬编码避免查询
         maxPriorityFeePerGas: priorityFee,
         maxFeePerGas: maxFee,
+        type: 2, // EIP-1559
       };
 
-      const populatedTx = await signer.populateTransaction(txRequest);
-      const signedTx = await signer.signTransaction(populatedTx);
+      // 直接签名，跳过 populateTransaction
+      const signedTx = await signer.signTransaction(txRequest);
       // 使用交易专用 RPC 发送交易
       const transactionProvider = getTransactionProvider();
       tx = await transactionProvider.broadcastTransaction(signedTx);
@@ -580,7 +613,7 @@ export async function buyToken(
       const launchpadContract = new ethers.Contract(safeLaunchpad, FOURMEME_LAUNCHPAD_ABI, signer);
       route = 'Four.meme内盘';
       
-      // 使用优化的交易发送方式（参考 test.js）
+      // 优化：直接构建完整交易对象，跳过 populateTransaction（节省 RPC 调用）
       const txRequest = {
         to: launchpadContract.target,
         data: launchpadContract.interface.encodeFunctionData("buyTokenAMAP", [
@@ -592,13 +625,14 @@ export async function buyToken(
         value: amountIn,
         gasLimit: 600000n,
         nonce,
-        chainId: chainId || undefined,
+        chainId: chainId || 56n, // BSC 主网，硬编码避免查询
         maxPriorityFeePerGas: priorityFee,
         maxFeePerGas: maxFee,
+        type: 2, // EIP-1559
       };
 
-      const populatedTx = await signer.populateTransaction(txRequest);
-      const signedTx = await signer.signTransaction(populatedTx);
+      // 直接签名，跳过 populateTransaction
+      const signedTx = await signer.signTransaction(txRequest);
       // 使用交易专用 RPC 发送交易
       const transactionProvider = getTransactionProvider();
       tx = await transactionProvider.broadcastTransaction(signedTx);
@@ -764,27 +798,40 @@ export async function sellToken(
 
     if (isGraduated) {
       // 已毕业：使用 PancakeSwap V2 外盘
-      // 并行: 获取报价 + 检查授权
-      timerStep(txId, '报价+授权');
       const routerAddress = PANCAKE_ROUTER_V2;
-      const [quote, _] = await Promise.all([
-        getBestQuote(tokenAddress, WBNB_ADDRESS, amountIn),
+      finalRouterAddress = PANCAKE_ROUTER_V2;
+      
+      let amountOutMin: bigint;
+      
+      // 激进模式：跳过报价获取，直接使用最小输出值（节省一次 RPC 调用）
+      if (settings.aggressiveMode) {
+        amountOutMin = 1n; // 最小输出值，接受更大滑点
+        logger.swap.info('激进模式：跳过报价获取，直接发送交易');
+        route = 'V2外盘(激进)';
+        
         // 后台检查授权（不阻塞）
         ensureApproval(tokenAddress, routerAddress, signer).catch(() => {
           logger.swap.warn('授权检查失败，继续尝试交易');
-        }),
-      ]);
+        });
+      } else {
+        // 并行: 获取报价 + 检查授权
+        timerStep(txId, '报价+授权');
+        const [quote, _] = await Promise.all([
+          getBestQuote(tokenAddress, WBNB_ADDRESS, amountIn),
+          // 后台检查授权（不阻塞）
+          ensureApproval(tokenAddress, routerAddress, signer).catch(() => {
+            logger.swap.warn('授权检查失败，继续尝试交易');
+          }),
+        ]);
 
-      // 只使用 V2 路由（V3 已禁用）
-      finalRouterAddress = PANCAKE_ROUTER_V2;
-
-      // 计算滑点
-      const amountOutMin = (quote.amountOut * BigInt(100 - settings.slippage)) / 100n;
-      route = 'V2外盘';
+        // 计算滑点
+        amountOutMin = (quote.amountOut * BigInt(100 - settings.slippage)) / 100n;
+        route = 'V2外盘';
+      }
 
       const router = new ethers.Contract(PANCAKE_ROUTER_V2, PANCAKE_ROUTER_V2_ABI, signer);
       
-      // 使用优化的交易发送方式（参考 test.js）
+      // 优化：直接构建完整交易对象，跳过 populateTransaction（节省 RPC 调用）
       const txRequest = {
         to: router.target,
         data: router.interface.encodeFunctionData("swapExactTokensForETH", [
@@ -796,13 +843,14 @@ export async function sellToken(
         ]),
         gasLimit: DEFAULT_GAS_LIMIT,
         nonce,
-        chainId: chainId || undefined,
+        chainId: chainId || 56n, // BSC 主网，硬编码避免查询
         maxPriorityFeePerGas: priorityFee,
         maxFeePerGas: maxFee,
+        type: 2, // EIP-1559
       };
 
-      const populatedTx = await signer.populateTransaction(txRequest);
-      const signedTx = await signer.signTransaction(populatedTx);
+      // 直接签名，跳过 populateTransaction
+      const signedTx = await signer.signTransaction(txRequest);
       // 使用交易专用 RPC 发送交易
       const transactionProvider = getTransactionProvider();
       tx = await transactionProvider.broadcastTransaction(signedTx);
@@ -818,7 +866,7 @@ export async function sellToken(
       
       logger.swap.info(`内盘卖出: token=${safeToken}, amount=${amountIn.toString()}`);
       
-      // 使用优化的交易发送方式（参考 test.js）
+      // 优化：直接构建完整交易对象，跳过 populateTransaction（节省 RPC 调用）
       const txRequest = {
         to: launchpadContract.target,
         data: launchpadContract.interface.encodeFunctionData("sellToken", [
@@ -827,13 +875,14 @@ export async function sellToken(
         ]),
         gasLimit: 600000n,
         nonce,
-        chainId: chainId || undefined,
+        chainId: chainId || 56n, // BSC 主网，硬编码避免查询
         maxPriorityFeePerGas: priorityFee,
         maxFeePerGas: maxFee,
+        type: 2, // EIP-1559
       };
 
-      const populatedTx = await signer.populateTransaction(txRequest);
-      const signedTx = await signer.signTransaction(populatedTx);
+      // 直接签名，跳过 populateTransaction
+      const signedTx = await signer.signTransaction(txRequest);
       // 使用交易专用 RPC 发送交易
       const transactionProvider = getTransactionProvider();
       tx = await transactionProvider.broadcastTransaction(signedTx);

@@ -105,24 +105,47 @@ export async function getProvider(forceRefresh: boolean = false): Promise<ethers
   const rpcUrl = await getAvailableRpcUrl();
   currentRpcUrl = rpcUrl;
 
-  // 创建新的 provider
-  cachedProvider = new ethers.JsonRpcProvider(rpcUrl, {
-    name: 'binance',
-    chainId: 56,
-  });
-
-  logger.wallet.info(`已连接到 RPC: ${rpcUrl}`);
-  return cachedProvider;
+  // 创建新的 provider（明确指定 chainId，避免自动检测网络）
+  try {
+    cachedProvider = new ethers.JsonRpcProvider(rpcUrl, {
+      name: 'binance',
+      chainId: 56,
+    });
+    
+    // 不立即检测网络，避免阻塞和错误
+    // 只在真正需要时才检测（例如第一次调用时）
+    logger.wallet.info(`已连接到 RPC: ${rpcUrl}`);
+    return cachedProvider;
+  } catch (error: any) {
+    logger.wallet.error(`创建 Provider 失败: ${error.message}`);
+    // 如果创建失败，尝试使用默认 URL
+    if (rpcUrl !== BSC_RPC_URL) {
+      logger.wallet.warn('尝试使用默认 RPC URL');
+      cachedProvider = new ethers.JsonRpcProvider(BSC_RPC_URL, {
+        name: 'binance',
+        chainId: 56,
+      });
+      currentRpcUrl = BSC_RPC_URL;
+      return cachedProvider;
+    }
+    throw error;
+  }
 }
 
 // 获取交易专用 Provider（仅用于发送交易）
 export function getTransactionProvider(): ethers.JsonRpcProvider {
   if (!cachedTransactionProvider) {
-    cachedTransactionProvider = new ethers.JsonRpcProvider(TRANSACTION_RPC_URL, {
-      name: 'binance',
-      chainId: 56,
-    });
-    logger.wallet.info(`已连接到交易专用 RPC: ${TRANSACTION_RPC_URL}`);
+    try {
+      cachedTransactionProvider = new ethers.JsonRpcProvider(TRANSACTION_RPC_URL, {
+        name: 'binance',
+        chainId: 56,
+      });
+      logger.wallet.info(`已连接到交易专用 RPC: ${TRANSACTION_RPC_URL}`);
+    } catch (error: any) {
+      logger.wallet.error(`创建交易专用 Provider 失败: ${error.message}`);
+      // 如果交易专用 RPC 失败，回退到普通 provider
+      throw new Error('交易专用 RPC 不可用');
+    }
   }
   return cachedTransactionProvider;
 }
